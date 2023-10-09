@@ -11,6 +11,16 @@ For each POST request with an array of wallet addresses, the server will categor
 $ npm install
 ```
 
+## Configuration
+
+### Environment variables
+
+The server uses the following environment variables:
+
+INFURA_URL=https://mainnet.infura.io/v3/2bd74917127f4cd79ca1c04c55e4ea12
+COINGECKO_URL=https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd
+
+Be sure to create .env file in the root directory and set these variables before running the server.
 ## Running the app
 
 ```bash
