@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, Inject } from '@nestjs/common';
 import HttpProvider from 'web3-providers-http';
 import Eth from 'web3-eth';
+import { encodeFunctionSignature } from 'web3-eth-abi';
 import { fromWei, Web3DeferredPromise } from 'web3-utils';
 import { isAddress } from 'web3-validator';
 import { HttpService } from '@nestjs/axios';
@@ -15,6 +16,7 @@ import { Cache } from 'cache-manager';
 export class EthService {
   private eth: Eth;
   private usdtContract: any;
+  private functo: any;
 
   constructor(
     private httpService: HttpService,
@@ -24,30 +26,32 @@ export class EthService {
     // Initialize Eth instance; here it's connected to the Ethereum mainnet via Infura
     const provider = new HttpProvider(configService.get<string>('INFURA_URL'));
     this.eth = new Eth(provider);
-    const balanceOfABI = [
-      {
-        constant: true,
-        inputs: [
-          {
-            name: '_owner',
-            type: 'address',
-          },
-        ],
-        name: 'balanceOf',
-        outputs: [
-          {
-            name: 'balance',
-            type: 'uint256',
-          },
-        ],
-        payable: false,
-        stateMutability: 'view',
-        type: 'function',
-      },
-    ];
+
+    this.functo = encodeFunctionSignature;
+
+    const balanceOfABI = {
+      constant: true,
+      inputs: [
+        {
+          name: '_owner',
+          type: 'address',
+        },
+      ],
+      name: 'balanceOf',
+      outputs: [
+        {
+          name: 'balance',
+          type: 'uint256',
+        },
+      ],
+      payable: false,
+      stateMutability: 'view',
+      type: 'function',
+    };
+
     const tokenContract = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
-    this.usdtContract = new Contract(balanceOfABI, tokenContract);
-    this.usdtContract.setProvider(provider);
+    //this.usdtContract = new Contract(balanceOfABI, tokenContract);
+    //this.usdtContract.setProvider(provider);
   }
 
   // Fetches the current ETH/USD price from CoinGecko
@@ -84,6 +88,28 @@ export class EthService {
       usd_balance: number;
     }[];
   }> {
+    const balanceOfABI = [
+      {
+        constant: true,
+        inputs: [
+          {
+            name: '_owner',
+            type: 'address',
+          },
+        ],
+        name: 'balanceOf',
+        outputs: [
+          {
+            name: 'balance',
+            type: 'uint256',
+          },
+        ],
+        payable: false,
+        stateMutability: 'view',
+        type: 'function',
+      },
+    ];
+    const tokenContract = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
     const validAddresses: string[] = [];
     const invalidAddresses: string[] = [];
 
@@ -131,16 +157,43 @@ export class EthService {
     // USDT balance payload
     const batch2 = new this.eth.BatchRequest();
     const balancePromises2: Web3DeferredPromise<unknown>[] = [];
-    usdtPayload: JsonRpcOptionalRequest = {
-      method: 'eth_call',
-      params: [address, 'latest'],
-    };
-    const resul = await this.usdtContract.methods
-      .balanceOf(addresses[0])
-      .call();
-    console.log(resul);
-    balancePromises.push(batch.add(resul));
 
+    const usdtData = this.functo(
+      {
+        inputs: [
+          {
+            name: 'account',
+            type: 'address',
+          },
+        ],
+        name: 'balanceOf',
+        outputs: [
+          {
+            name: '',
+            type: 'uint256',
+          },
+        ],
+        stateMutability: 'view',
+        type: 'function',
+      },
+      ['0x1234567890123456789012345678901234567890'],
+    );
+    const usdtPayload: JsonRpcOptionalRequest = {
+      method: 'eth_call',
+      params: [
+        {
+          to: tokenContract,
+          data: usdtData,
+        },
+        'latest',
+      ],
+    };
+
+    balancePromises2.push(batch2.add(usdtPayload));
+    await batch2.execute();
+
+    const resul = await Promise.all(balancePromises2);
+    console.log('Resul', resul);
     return {
       wrong_addresses: invalidAddresses,
       sorted_addresses: balanceRes,
