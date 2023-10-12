@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EthService } from './eth.service';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
-import { CacheModule, CACHE_MANAGER } from '@nestjs/cache-manager';
+import { CacheModule } from '@nestjs/cache-manager';
 
 describe('EthService', () => {
   let ethService: EthService;
@@ -26,22 +26,24 @@ describe('EthService', () => {
 
   describe('validateAndSortBalances', () => {
     it('should validate and sort ETH balances', async () => {
+      //Add a wrong address and and a correct address with non-zero ETH and USDT balances
       const addresses = [
-        '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+        '0x00000000219ab540356cBB839Cbe05303d7705Fa',
         'WrongAddress',
-      ]; // Replace with actual Ethereum addresses
+      ];
 
       const response = await ethService.validateAndSortBalances(addresses);
-      console.log('Reso', response);
+      console.log('Response', response);
 
       expect(response.sorted_addresses[0].address).toBe(
-        '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+        '0x00000000219ab540356cBB839Cbe05303d7705Fa',
       );
       expect(response.wrong_addresses.length).toBe(1);
       expect(response.wrong_addresses[0]).toBe('WrongAddress');
 
       expect(response.sorted_addresses[0].eth_balance).toBeGreaterThan(0);
       expect(response.sorted_addresses[0].usd_balance).toBeGreaterThan(0);
+      expect(response.sorted_addresses[0].usdt_balance).toBeGreaterThan(0);
     });
   });
 });

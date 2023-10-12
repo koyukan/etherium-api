@@ -3,6 +3,7 @@ import { EthController } from './eth.controller';
 import { EthService } from './eth.service';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
+import { CacheModule } from '@nestjs/cache-manager';
 
 describe('EthController', () => {
   let controller: EthController;
@@ -12,7 +13,15 @@ describe('EthController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [EthController],
-      imports: [HttpModule, ConfigModule.forRoot()],
+      imports: [
+        HttpModule,
+        ConfigModule.forRoot(),
+        CacheModule.register({
+          store: 'memory',
+          ttl: 60 * 1000, // time to live in milliseconds
+          max: 5, // maximum number of items in cache
+        }),
+      ],
       providers: [EthService],
     }).compile();
 
@@ -36,7 +45,12 @@ describe('EthController', () => {
       const expectedResult = {
         wrong_addresses: ['WrongAddress'],
         sorted_addresses: [
-          { address: '0x12345', eth_balance: 10, usd_balance: 20 },
+          {
+            address: '0x12345',
+            eth_balance: 10,
+            usdt_balance: 10,
+            usd_balance: 20,
+          },
         ],
       };
 

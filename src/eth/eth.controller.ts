@@ -11,7 +11,12 @@ export class EthController {
     @Body('addresses') addresses: string[],
   ): Promise<{
     wrong_addresses: string[];
-    sorted_addresses: { address: string; eth_balance: number }[];
+    sorted_addresses: {
+      address: string;
+      eth_balance: number;
+      usdt_balance: number;
+      usd_balance: number;
+    }[];
   }> {
     // Call the service method to validate and sort the balances
     const result = await this.ethService.validateAndSortBalances(addresses);

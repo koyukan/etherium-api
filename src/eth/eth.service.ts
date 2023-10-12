@@ -25,7 +25,7 @@ export class EthService {
     this.eth = new Eth(provider);
   }
 
-  // Fetches the current ETH/USD price from CoinGecko and caches it for 5 minutes
+  // Fetches the current ETH/USD price from CoinGecko and caches it for 1 minute (According to CoinGecko's rate update frequency of 1-3 minutes)
   private async fetchEthToUsdPrice(): Promise<number> {
     const cacheKey = 'ethToUsdPrice';
     const cachedPrice: number = await this.cacheManager.get(cacheKey);
@@ -56,6 +56,7 @@ export class EthService {
     sorted_addresses: {
       address: string;
       eth_balance: number;
+      usdt_balance: number;
       usd_balance: number;
     }[];
   }> {
@@ -80,6 +81,7 @@ export class EthService {
     const tokenContract = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
     const validAddresses: string[] = [];
     const invalidAddresses: string[] = [];
+    const processedResults = [];
 
     // Fetch Current ETH/USD price
     const ethToUsdPrice = await this.fetchEthToUsdPrice();
@@ -121,8 +123,6 @@ export class EthService {
     await batch.execute();
 
     const results = await Promise.all(balancePromises);
-    console.log('results', results);
-    const processedResults = [];
 
     for (let i = 0; i < results.length; i += 2) {
       const ethBalanceWei = results[i].toString(); // ETH balance in Wei
@@ -131,7 +131,6 @@ export class EthService {
 
       const usdtBalance =
         parseFloat(hexToNumberString(results[i + 1].toString())) / 10 ** 6; // USDT balance in HEX, convert to number and divide by 10^6 for 6 decimals
-      console.log('usdtBalance', usdtBalance);
 
       const totalUsdBalance = ethBalanceUsd + usdtBalance; // Sum of ETH balance in USD and USDT balance
 
