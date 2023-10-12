@@ -2,13 +2,22 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EthService } from './eth.service';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
+import { CacheModule, CACHE_MANAGER } from '@nestjs/cache-manager';
 
 describe('EthService', () => {
   let ethService: EthService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      imports: [HttpModule, ConfigModule.forRoot()],
+      imports: [
+        HttpModule,
+        ConfigModule.forRoot(),
+        CacheModule.register({
+          store: 'memory',
+          ttl: 60 * 1000, // time to live in milliseconds
+          max: 5, // maximum number of items in cache
+        }),
+      ],
       providers: [EthService],
     }).compile();
 

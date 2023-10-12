@@ -1,13 +1,12 @@
 import { ForbiddenException, Injectable, Inject } from '@nestjs/common';
 import HttpProvider from 'web3-providers-http';
 import Eth from 'web3-eth';
-import { encodeFunctionSignature } from 'web3-eth-abi';
-import { fromWei, Web3DeferredPromise } from 'web3-utils';
+import { encodeFunctionCall } from 'web3-eth-abi';
+import { fromWei, hexToNumberString, Web3DeferredPromise } from 'web3-utils';
 import { isAddress } from 'web3-validator';
 import { HttpService } from '@nestjs/axios';
 import { map, catchError, lastValueFrom } from 'rxjs';
 import { JsonRpcOptionalRequest } from 'web3-types';
-import { Contract } from 'web3-eth-contract';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -15,8 +14,6 @@ import { Cache } from 'cache-manager';
 @Injectable()
 export class EthService {
   private eth: Eth;
-  private usdtContract: any;
-  private functo: any;
 
   constructor(
     private httpService: HttpService,
@@ -26,35 +23,9 @@ export class EthService {
     // Initialize Eth instance; here it's connected to the Ethereum mainnet via Infura
     const provider = new HttpProvider(configService.get<string>('INFURA_URL'));
     this.eth = new Eth(provider);
-
-    this.functo = encodeFunctionSignature;
-
-    const balanceOfABI = {
-      constant: true,
-      inputs: [
-        {
-          name: '_owner',
-          type: 'address',
-        },
-      ],
-      name: 'balanceOf',
-      outputs: [
-        {
-          name: 'balance',
-          type: 'uint256',
-        },
-      ],
-      payable: false,
-      stateMutability: 'view',
-      type: 'function',
-    };
-
-    const tokenContract = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
-    //this.usdtContract = new Contract(balanceOfABI, tokenContract);
-    //this.usdtContract.setProvider(provider);
   }
 
-  // Fetches the current ETH/USD price from CoinGecko
+  // Fetches the current ETH/USD price from CoinGecko and caches it for 5 minutes
   private async fetchEthToUsdPrice(): Promise<number> {
     const cacheKey = 'ethToUsdPrice';
     const cachedPrice: number = await this.cacheManager.get(cacheKey);
@@ -88,27 +59,24 @@ export class EthService {
       usd_balance: number;
     }[];
   }> {
-    const balanceOfABI = [
-      {
-        constant: true,
-        inputs: [
-          {
-            name: '_owner',
-            type: 'address',
-          },
-        ],
-        name: 'balanceOf',
-        outputs: [
-          {
-            name: 'balance',
-            type: 'uint256',
-          },
-        ],
-        payable: false,
-        stateMutability: 'view',
-        type: 'function',
-      },
-    ];
+    // USDT balance ABI
+    const abiBalance = {
+      inputs: [
+        {
+          name: 'account',
+          type: 'address',
+        },
+      ],
+      name: 'balanceOf',
+      outputs: [
+        {
+          name: 'balance',
+          type: 'uint256',
+        },
+      ],
+      stateMutability: 'view',
+      type: 'function',
+    };
     const tokenContract = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
     const validAddresses: string[] = [];
     const invalidAddresses: string[] = [];
@@ -130,6 +98,20 @@ export class EthService {
           params: [address, 'latest'],
         };
         balancePromises.push(batch.add(ethPayload));
+
+        // USDT balance payload
+        const usdtData = encodeFunctionCall(abiBalance, [address]);
+        const usdtPayload: JsonRpcOptionalRequest = {
+          method: 'eth_call',
+          params: [
+            {
+              to: tokenContract,
+              data: usdtData,
+            },
+            'latest',
+          ],
+        };
+        balancePromises.push(batch.add(usdtPayload));
       } else {
         invalidAddresses.push(address);
       }
@@ -139,64 +121,34 @@ export class EthService {
     await batch.execute();
 
     const results = await Promise.all(balancePromises);
+    console.log('results', results);
+    const processedResults = [];
 
-    const balanceRes = results
-      .map((balance, index) => {
-        // Convert the balance from wei to ether
-        const balanceEther = parseFloat(fromWei(balance.toString(), 'ether'));
-        return {
-          address: validAddresses[index].toString(),
-          eth_balance: balanceEther,
-          // Convert the balance from ether to USD
-          usd_balance: balanceEther * ethToUsdPrice,
-        };
-      })
-      // Sort the results by USD balance in descending order
-      .sort((a, b) => b.usd_balance - a.usd_balance);
+    for (let i = 0; i < results.length; i += 2) {
+      const ethBalanceWei = results[i].toString(); // ETH balance in Wei
+      const ethBalance = parseFloat(fromWei(ethBalanceWei, 'ether')); // Convert Wei to Ether
+      const ethBalanceUsd = ethBalance * ethToUsdPrice; // Convert ETH balance to USD
 
-    // USDT balance payload
-    const batch2 = new this.eth.BatchRequest();
-    const balancePromises2: Web3DeferredPromise<unknown>[] = [];
+      const usdtBalance =
+        parseFloat(hexToNumberString(results[i + 1].toString())) / 10 ** 6; // USDT balance in HEX, convert to number and divide by 10^6 for 6 decimals
+      console.log('usdtBalance', usdtBalance);
 
-    const usdtData = this.functo(
-      {
-        inputs: [
-          {
-            name: 'account',
-            type: 'address',
-          },
-        ],
-        name: 'balanceOf',
-        outputs: [
-          {
-            name: '',
-            type: 'uint256',
-          },
-        ],
-        stateMutability: 'view',
-        type: 'function',
-      },
-      ['0x1234567890123456789012345678901234567890'],
-    );
-    const usdtPayload: JsonRpcOptionalRequest = {
-      method: 'eth_call',
-      params: [
-        {
-          to: tokenContract,
-          data: usdtData,
-        },
-        'latest',
-      ],
-    };
+      const totalUsdBalance = ethBalanceUsd + usdtBalance; // Sum of ETH balance in USD and USDT balance
 
-    balancePromises2.push(batch2.add(usdtPayload));
-    await batch2.execute();
+      processedResults.push({
+        address: validAddresses[i / 2],
+        eth_balance: ethBalance,
+        usdt_balance: usdtBalance,
+        usd_balance: totalUsdBalance,
+      });
+    }
 
-    const resul = await Promise.all(balancePromises2);
-    console.log('Resul', resul);
+    // Sort the results by USD balance in descending order
+    processedResults.sort((a, b) => b.usd_balance - a.usd_balance);
+
     return {
       wrong_addresses: invalidAddresses,
-      sorted_addresses: balanceRes,
+      sorted_addresses: processedResults,
     };
   }
 }

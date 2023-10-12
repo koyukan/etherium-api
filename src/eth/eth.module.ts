@@ -12,7 +12,7 @@ import { CacheModule } from '@nestjs/cache-manager';
     ConfigModule.forRoot(),
     CacheModule.register({
       store: 'memory',
-      ttl: 60 * 1000, // milliseconds
+      ttl: 60 * 1000, // time to live in milliseconds
       max: 5, // maximum number of items in cache
     }),
   ],
